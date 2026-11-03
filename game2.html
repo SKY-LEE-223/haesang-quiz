@@ -1046,7 +1046,7 @@ function renderHostEnd(el, top, b, names){
     <div class="card stack"><div class="hud-label">FINAL · 최종 전황</div>${podiumHTML(b, names)}</div>
     <div class="card stack"><div class="hud-label">AWARDS</div>${awardsHTML(awards(b, names))}</div>
     <div class="card stack"><div class="hud-label">LEADERBOARD</div>${rankHTML(b, names, null, 10)}</div>
-    <div class="row"><button class="btn primary huge" data-act="review">수업 정리 ▶</button><button class="btn ghost" data-act="new-game">새 게임 (다른 반)</button></div></div></div>`;
+    <div class="row"><button class="btn primary huge" data-act="review">수업 정리 ▶</button><button class="btn" data-act="rematch">🔁 같은 반 한 판 더</button><button class="btn ghost" data-act="new-game">새 게임 (다른 반)</button></div><div class="muted" style="font-size:14px">한 판 더: 방 코드와 학생은 그대로, 지도와 기록은 새로 시작해요. 이번 판 결과가 필요하면 먼저 수업 정리 → 학생별 결과에서 CSV를 받으세요.</div></div></div>`;
 }
 function stats(){
   const pids = playerIds();
@@ -1097,7 +1097,7 @@ function renderStudent(el){
   const st = m.q >= 0 ? streakIn(room.answers, me, m.phase === "question" ? m.q - 1 : m.q) : 0;
   const top = `<div class="topbar">${MODE.demo ? "" : '<span class="brand">해상 점령전 2탄</span>'}<span class="chip"><span class="flag" style="--pc:${color}"></span><b style="font-family:var(--body)">${esc(stu.name)}</b></span>${b ? `<span class="chip">🗺️ 땅 <b>${land}</b>칸</span>` : ""}${pos != null ? `<span class="chip">🏆 <b>${pos + 1}</b>위</span>` : ""}${st >= 2 ? `<span class="chip fire">🔥 <b>${st}</b>연속 명중</span>` : ""}<span class="spacer"></span>${MODE.demo ? "" : sfxBtn()}</div>`;
   if (!m.phase) { el.innerHTML = top + `<div class="center"><div class="card stack">방이 닫혔어요. 선생님께 새 방 코드를 받으세요. <button class="btn small" data-act="leave">다시 승선</button></div></div>`; return; }
-  if (m.phase === "lobby") { el.innerHTML = top + `<div class="center"><div class="card reveal"><div class="ship">⛵</div><div class="big">승선 완료!</div><div class="muted" style="font-size:18px">선생님이 출항 신호를 보내면 첫 문제가 나와요.</div><div class="hud-label" style="margin-top:8px">ITEMS · 바다에 숨은 아이템</div>${itemsGrid()}</div></div>`; return; }
+  if (m.phase === "lobby") { stu.pickedQ = -2; stu.prevOwner = null; rankSnap.q = -1; el.innerHTML = top + `<div class="center"><div class="card reveal"><div class="ship">⛵</div><div class="big">승선 완료!</div><div class="muted" style="font-size:18px">선생님이 출항 신호를 보내면 첫 문제가 나와요.</div><div class="hud-label" style="margin-top:8px">ITEMS · 바다에 숨은 아이템</div>${itemsGrid()}</div></div>`; return; }
   const q = m.q;
   if (stu.pickedQ !== q) { stu.picked = []; stu.pickedQ = q; const mv = movesFor(q)[me]; if (mv && mv.cells) stu.picked = mv.cells.split(",").map(Number); }
   if (m.phase === "question") {
@@ -1139,7 +1139,7 @@ function renderStudent(el){
     side = `<div class="card stack"><div class="hud-label">FINAL · 내 최종 순위</div><div class="row" style="align-items:baseline"><span class="energy" style="font-size:90px">${pos != null ? pos + 1 : "-"}</span><span class="big" style="font-size:30px">위</span><span class="spacer"></span><span class="chip">🗺️ <b>${land}</b>칸</span></div>
       ${aw.length ? awardsHTML(aw) : ""}
       <div class="hud-label">나만 보이는 문제별 결과</div><div class="row" style="gap:6px">${rows.map((x, i) => `<span class="chip">Q${i + 1} <b style="color:${x === "O" ? "var(--good)" : x === "X" ? "var(--red)" : "inherit"}">${x}</b></span>`).join("")}</div>
-      <div class="muted">틀린 문제는 이제 선생님과 함께 풀어봐요.</div></div>`;
+      <div class="muted">틀린 문제는 이제 선생님과 함께 풀어봐요.</div>${MODE.demo ? "" : `<div class="muted" style="font-size:14px">선생님이 "한 판 더"를 누르면 자동으로 대기 화면으로 넘어가요. 새 방 코드를 받았다면 아래 버튼을 누르세요.</div><button class="btn" data-act="leave">⚓ 새 방 코드로 승선하기</button>`}</div>`;
   }
   side += `<div class="card stack"><div class="hud-label">LEADERBOARD</div>${rankHTML(b, names, me, 5)}</div>`;
   el.innerHTML = top + `<div class="player-view"><div class="mapbox">${renderMap(b, { me, picked:stu.picked, selectable:sel, flash:stu.flash, q })}${legendHTML}</div><div class="side">${side}</div></div>`;
@@ -1177,6 +1177,12 @@ async function doAct(t){
     return render();
   }
   if (act === "start") return startGame();
+  if (act === "rematch") {
+    if (!t.dataset.sure) { t.dataset.sure = 1; t.textContent = "이번 판 기록이 지워져요. 한 번 더 누르면 새 판"; return; }
+    host.review = null; rankSnap.q = -1; Object.assign(hostPrev, { owner:null, key:"" });
+    await writeRoom({ board:null, answers:null, moves:null, ap:null, "meta/phase":"lobby", "meta/q":-1, "meta/endsAt":0 });
+    return render();
+  }
   if (act === "skip") return skipPhase();
   if (act === "add-time") return addTime();
   if (act === "end-now") { if (t.dataset.sure) return writeRoom({ "meta/phase":"end", "meta/endsAt":0 }); t.dataset.sure = 1; t.textContent = "정말 끝낼까요? 한 번 더 누르기"; return; }
@@ -1190,7 +1196,7 @@ async function doAct(t){
   if (act === "new-game") { if (MODE.demo) return demoStart(); ls.del("hostRoom_g2"); host.active = false; host.review = null; if (unsub) unsub(); room = {}; return renderTeacherGate($("#app")); }
   if (act === "ans") { await answer(+t.dataset.c); return; }
   if (act === "done") { await finishMove(); return; }
-  if (act === "leave") { ls.del("stu_g2"); stu.pid = null; return render(); }
+  if (act === "leave") { const sv = ls.get("stu_g2") || {}; ls.set("stu_g2", { sid:sv.sid || stu.sid, name:sv.name || stu.name }); if (unsub) unsub(); unsub = null; room = {}; stu.pid = null; render.last = null; return render(); }
 }
 
 /* ============================ 시작 ============================ */
@@ -1215,7 +1221,10 @@ function boot(){
   if (location.hash === "#teacher") { renderTeacherGate($("#app")); return; }
   const saved = ls.get("stu_g2");
   if (saved && saved.code) {
-    S.get("quizrooms/" + saved.code + "/players/p" + saved.sid).then(p => { if (p) { Object.assign(stu, { pid:"p" + saved.sid, sid:saved.sid, name:saved.name }); subscribe("quizrooms/" + saved.code); } else render(); }).catch(() => render());
+    Promise.all([S.get("quizrooms/" + saved.code + "/players/p" + saved.sid), S.get("quizrooms/" + saved.code + "/meta")]).then(([p, meta]) => {
+      if (p && meta && meta.phase !== "end") { Object.assign(stu, { pid:"p" + saved.sid, sid:saved.sid, name:saved.name }); subscribe("quizrooms/" + saved.code); }
+      else { ls.set("stu_g2", { sid:saved.sid, name:saved.name }); render.last = null; render(); }
+    }).catch(() => render());
   }
   render();
 }
